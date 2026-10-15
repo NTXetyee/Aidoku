@@ -150,6 +150,36 @@ actor DownloadManager {
         }
     }
 
+    /// Whether a downloaded chapter was upscaled (has at least one baked page).
+    nonisolated func isChapterUpscaled(_ chapter: ChapterIdentifier) -> Bool {
+        let directory = cache.directory(for: chapter)
+        let archive = directory.appendingPathExtension("cbz")
+        if archive.exists {
+            return !ChapterBaker.bakedPages(forChapterAt: archive).isEmpty
+        }
+        if directory.exists {
+            return !ChapterBaker.bakedPages(forChapterAt: directory).isEmpty
+        }
+        return false
+    }
+
+    /// Upscale chapters that are already downloaded.
+    func upscale(chapters: [ChapterIdentifier]) async {
+        await ChapterUpscaleQueue.shared.enqueue(chapters)
+    }
+
+    func cancelUpscale(chapter: ChapterIdentifier) async {
+        await ChapterUpscaleQueue.shared.cancel(chapter)
+    }
+
+    /// Remove a download and download it again, without upscaling.
+    func redownload(manga: AidokuRunner.Manga, chapter: AidokuRunner.Chapter) async {
+        let identifier = ChapterIdentifier(sourceKey: manga.sourceKey, mangaKey: manga.key, chapterKey: chapter.key)
+        await ChapterUpscaleQueue.shared.cancel(identifier)
+        await delete(chapters: [identifier])
+        await download(manga: manga, chapters: [chapter])
+    }
+
     nonisolated func getMangaDirectoryUrl(identifier: MangaIdentifier) -> URL? {
         let path = cache.directory(for: identifier).path
         return URL(string: "shareddocuments://\(path)")
@@ -176,7 +206,7 @@ actor DownloadManager {
 
 extension DownloadManager {
     /// Download all chapters for a manga.
-    func downloadAll(manga: AidokuRunner.Manga) async {
+    func downloadAll(manga: AidokuRunner.Manga, upscale: Bool = false) async {
         let allChapters = await CoreDataManager.shared.getChapters(mangaId: manga.identifier)
 
         var chaptersToDownload: [AidokuRunner.Chapter] = []
@@ -189,11 +219,11 @@ extension DownloadManager {
             }
         }
 
-        await download(manga: manga, chapters: chaptersToDownload.reversed())
+        await download(manga: manga, chapters: chaptersToDownload.reversed(), upscale: upscale)
     }
 
     /// Download unread chapters for a manga.
-    func downloadUnread(manga: AidokuRunner.Manga) async {
+    func downloadUnread(manga: AidokuRunner.Manga, upscale: Bool = false) async {
         let readingHistory = await CoreDataManager.shared.getReadingHistory(mangaId: manga.identifier)
         let allChapters = await CoreDataManager.shared.getChapters(mangaId: manga.identifier)
 
@@ -209,12 +239,12 @@ extension DownloadManager {
             }
         }
 
-        await download(manga: manga, chapters: chaptersToDownload.reversed())
+        await download(manga: manga, chapters: chaptersToDownload.reversed(), upscale: upscale)
     }
 
-    /// Download given chapters from a manga.
-    func download(manga: AidokuRunner.Manga, chapters: [AidokuRunner.Chapter]) async {
-        let downloads = await queue.add(chapters: chapters, manga: manga, autoStart: true)
+    /// Download given chapters from a manga, optionally upscaling their pages once downloaded.
+    func download(manga: AidokuRunner.Manga, chapters: [AidokuRunner.Chapter], upscale: Bool = false) async {
+        let downloads = await queue.add(chapters: chapters, manga: manga, autoStart: true, upscale: upscale)
         NotificationCenter.default.post(
             name: .downloadsQueued,
             object: downloads

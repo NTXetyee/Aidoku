@@ -30,6 +30,10 @@ struct Download: Equatable, Sendable, Codable {
     var manga: AidokuRunner.Manga
     var chapter: AidokuRunner.Chapter
 
+    /// Whether the pages should be upscaled once the download finishes.
+    /// Optional so queues saved by older builds still decode.
+    var upscale: Bool?
+
     static func == (lhs: Download, rhs: Download) -> Bool {
         lhs.chapterIdentifier == rhs.chapterIdentifier
     }
@@ -37,13 +41,15 @@ struct Download: Equatable, Sendable, Codable {
     static func from(
         manga: AidokuRunner.Manga,
         chapter: AidokuRunner.Chapter,
-        status: DownloadStatus = .queued
+        status: DownloadStatus = .queued,
+        upscale: Bool = false
     ) -> Download {
         Download(
             chapterIdentifier: .init(sourceKey: manga.sourceKey, mangaKey: manga.key, chapterKey: chapter.key),
             status: status,
             manga: manga,
-            chapter: chapter
+            chapter: chapter,
+            upscale: upscale
         )
     }
 }

@@ -57,6 +57,8 @@ extension Notification.Name {
     static let downloadsQueued = Self("downloadsQueued")
     static let downloadsPaused = Self("downloadsPaused")
     static let downloadsResumed = Self("downloadsResumed")
+    static let chapterUpscaleProgressed = Self("chapterUpscaleProgressed")
+    static let chapterUpscaleFinished = Self("chapterUpscaleFinished")
 
     // browse
     static let filterExternalSources = Self("filterExternalSources")

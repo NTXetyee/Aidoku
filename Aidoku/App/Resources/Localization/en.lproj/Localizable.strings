@@ -60,7 +60,12 @@
 "VIEW_SERIES" = "View Series";
 "VIEW_FILES" = "View Files";
 "COMPRESS_DOWNLOADS" = "Compress Downloads";
-"UPSCALE_DOWNLOADS" = "Upscale Downloads Once";
+"DOWNLOAD_AND_UPSCALE" = "Download and Upscale";
+"UPSCALE" = "Upscale";
+"CANCEL_UPSCALE" = "Cancel Upscale";
+"REDOWNLOAD_NOT_UPSCALED" = "Redownload Non-Upscaled";
+"DOWNLOAD_ALL_UPSCALE" = "All + Upscale";
+"DOWNLOAD_UNREAD_UPSCALE" = "Unread + Upscale";
 "PARALLEL_DOWNLOADS" = "Parallel Downloads";
 "BACKGROUND_DOWNLOADING" = "Background Downloading";
 "METADATA_DETECTED" = "Legacy Metadata Detected";

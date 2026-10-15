@@ -1529,37 +1529,47 @@ extension LibraryViewController {
                 }
             ]))
 
-            let downloadAllAction = UIAction(title: NSLocalizedString("ALL")) { _ in
-                let downloadOnlyOnWifi = AppSettings.downloads.downloadOnlyOnWifi.get()
-                if downloadOnlyOnWifi && Reachability.getConnectionType() == .wifi || !downloadOnlyOnWifi  {
-                    Task {
-                        for mangaInfo in mangaInfo {
-                            await DownloadManager.shared.downloadAll(manga: mangaInfo.toManga().toNew())
+            let hasUpscaleModel = ModelManager.shared.getEnabledModelFileName() != nil
+
+            func downloadAction(title: String, unreadOnly: Bool, upscale: Bool) -> UIAction {
+                UIAction(
+                    title: title,
+                    image: upscale ? UIImage(systemName: "wand.and.stars") : nil,
+                    attributes: upscale && !hasUpscaleModel ? .disabled : []
+                ) { _ in
+                    let downloadOnlyOnWifi = AppSettings.downloads.downloadOnlyOnWifi.get()
+                    if downloadOnlyOnWifi && Reachability.getConnectionType() == .wifi || !downloadOnlyOnWifi {
+                        Task {
+                            for info in mangaInfo {
+                                let manga = info.toManga().toNew()
+                                if unreadOnly {
+                                    await DownloadManager.shared.downloadUnread(manga: manga, upscale: upscale)
+                                } else {
+                                    await DownloadManager.shared.downloadAll(manga: manga, upscale: upscale)
+                                }
+                            }
                         }
+                    } else {
+                        self.presentAlert(
+                            title: NSLocalizedString("NO_WIFI_ALERT_TITLE"),
+                            message: NSLocalizedString("NO_WIFI_ALERT_MESSAGE")
+                        )
                     }
-                } else {
-                    self.presentAlert(
-                        title: NSLocalizedString("NO_WIFI_ALERT_TITLE"),
-                        message: NSLocalizedString("NO_WIFI_ALERT_MESSAGE")
-                    )
                 }
             }
 
-            let downloadUnreadAction = UIAction(title: NSLocalizedString("UNREAD")) { _ in
-                let downloadOnlyOnWifi = AppSettings.downloads.downloadOnlyOnWifi.get()
-                if downloadOnlyOnWifi && Reachability.getConnectionType() == .wifi || !downloadOnlyOnWifi  {
-                    Task {
-                        for manga in mangaInfo {
-                            await DownloadManager.shared.downloadUnread(manga: manga.toManga().toNew())
-                        }
-                    }
-                } else {
-                    self.presentAlert(
-                        title: NSLocalizedString("NO_WIFI_ALERT_TITLE"),
-                        message: NSLocalizedString("NO_WIFI_ALERT_MESSAGE")
-                    )
-                }
-            }
+            let downloadAllAction = downloadAction(title: NSLocalizedString("ALL"), unreadOnly: false, upscale: false)
+            let downloadUnreadAction = downloadAction(title: NSLocalizedString("UNREAD"), unreadOnly: true, upscale: false)
+            let downloadAllUpscaleAction = downloadAction(
+                title: NSLocalizedString("DOWNLOAD_ALL_UPSCALE"),
+                unreadOnly: false,
+                upscale: true
+            )
+            let downloadUnreadUpscaleAction = downloadAction(
+                title: NSLocalizedString("DOWNLOAD_UNREAD_UPSCALE"),
+                unreadOnly: true,
+                upscale: true
+            )
 
             if
                 manga.id.sourceKey != LocalSourceRunner.sourceKey,
@@ -1568,7 +1578,12 @@ extension LibraryViewController {
                 bottomMenuChildren.append(UIMenu(
                     title: NSLocalizedString("DOWNLOAD"),
                     image: UIImage(systemName: "arrow.down.circle"),
-                    children: [downloadAllAction, downloadUnreadAction]
+                    children: [
+                        downloadAllAction,
+                        downloadUnreadAction,
+                        downloadAllUpscaleAction,
+                        downloadUnreadUpscaleAction
+                    ]
                 ))
             }
 

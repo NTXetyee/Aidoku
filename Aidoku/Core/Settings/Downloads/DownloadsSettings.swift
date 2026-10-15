@@ -9,7 +9,6 @@ struct DownloadsSettings: Sendable {
     var keys: [any SettingsDefault] {
         [
             compress,
-            bake,
             parallel,
             background,
             downloadOnlyOnWifi,
@@ -18,7 +17,6 @@ struct DownloadsSettings: Sendable {
     }
 
     let compress = SettingsKey<Bool>("Downloads.compress", default: true)
-    let bake = SettingsKey<Bool>("Downloads.bake", default: true)
     let parallel = SettingsKey<Bool>("Downloads.parallel", default: true)
     let background = SettingsKey<Bool>("Downloads.background", default: true)
 

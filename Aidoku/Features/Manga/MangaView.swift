@@ -361,7 +361,9 @@ extension MangaView {
             downloadStatus: downloadStatus,
             downloadProgress: viewModel.downloadProgress[chapter.key],
             displayMode: viewModel.chapterTitleDisplayMode,
-            isEditing: editMode == .active
+            isEditing: editMode == .active,
+            upscaled: viewModel.upscaledChapters.contains(chapter.key),
+            upscaleProgress: viewModel.upscaleProgress[chapter.key]
         ) {
             if editMode == .inactive {
                 openChapter = chapter
@@ -406,6 +408,7 @@ extension MangaView {
             chapterKey: chapter.key
         )
 
+        let hasModel = ModelManager.shared.getEnabledModelFileName() != nil
         let hasDownloadButton = viewModel.source != nil && !viewModel.manga.isLocal() && downloadStatus != .finished && downloadStatus != .downloading
         let hasShareButton = downloadStatus == .finished || chapter.url != nil
         Section {
@@ -413,20 +416,7 @@ extension MangaView {
             let buttons = Group {
                 if hasDownloadButton {
                     Button {
-                        let downloadOnlyOnWifi = AppSettings.downloads.downloadOnlyOnWifi.get()
-                        if
-                            downloadOnlyOnWifi && Reachability.getConnectionType() == .wifi
-                                || !downloadOnlyOnWifi
-                        {
-                            Task {
-                                await DownloadManager.shared.download(
-                                    manga: viewModel.manga,
-                                    chapters: [chapter]
-                                )
-                            }
-                        } else {
-                            showConnectionAlert = true
-                        }
+                        downloadChapters([chapter], upscale: false)
                     } label: {
                         Label(
                             NSLocalizedString("DOWNLOAD"),
@@ -451,6 +441,14 @@ extension MangaView {
                 }
             } else {
                 buttons
+            }
+            if hasDownloadButton {
+                Button {
+                    downloadChapters([chapter], upscale: true)
+                } label: {
+                    Label(NSLocalizedString("DOWNLOAD_AND_UPSCALE"), systemImage: "wand.and.stars")
+                }
+                .disabled(!hasModel)
             }
         }
 
@@ -520,6 +518,29 @@ extension MangaView {
             } else {
                 // a failed download leaves a partial chapter on disk, so it is removable in the same
                 // way a complete one is; it keeps the download button as well, which retries it
+                if downloadStatus == .finished {
+                    if viewModel.upscaleProgress[chapter.key] != nil {
+                        Button {
+                            viewModel.cancelUpscale(chapterKey: chapter.key)
+                        } label: {
+                            Label(NSLocalizedString("CANCEL_UPSCALE"), systemImage: "xmark")
+                        }
+                    } else if viewModel.upscaledChapters.contains(chapter.key) {
+                        Button {
+                            viewModel.redownload(chapter: chapter)
+                        } label: {
+                            Label(NSLocalizedString("REDOWNLOAD_NOT_UPSCALED"), systemImage: "arrow.counterclockwise")
+                        }
+                        .disabled(viewModel.source == nil)
+                    } else {
+                        Button {
+                            viewModel.upscale(chapterKeys: [chapter.key])
+                        } label: {
+                            Label(NSLocalizedString("UPSCALE"), systemImage: "sparkles")
+                        }
+                        .disabled(!hasModel)
+                    }
+                }
                 if downloadStatus == .finished || downloadStatus == .failed {
                     Button(role: .destructive) {
                         Task {
@@ -696,6 +717,7 @@ extension MangaView {
         let allChaptersDownloaded = !selectedChapters.contains(where: {
             viewModel.downloadStatus[$0] != .finished
         })
+        let hasModel = ModelManager.shared.getEnabledModelFileName() != nil
         if !selectedChapters.isEmpty && allChaptersQueued {
             Button(NSLocalizedString("CANCEL")) {
                 Task { [selectedChapters] in
@@ -712,42 +734,72 @@ extension MangaView {
                 }
             }
         } else if !selectedChapters.isEmpty && allChaptersDownloaded {
-            Button(NSLocalizedString("REMOVE")) {
-                showRemoveSelectedConfirm = true
+            let upscalable = selectedChapters.filter {
+                !viewModel.upscaledChapters.contains($0) && viewModel.upscaleProgress[$0] == nil
+            }
+            HStack(spacing: 16) {
+                if !upscalable.isEmpty {
+                    Button(NSLocalizedString("UPSCALE")) {
+                        viewModel.upscale(chapterKeys: Array(upscalable))
+                        withAnimation {
+                            editMode = .inactive
+                        }
+                    }
+                    .disabled(!hasModel)
+                }
+                Button(NSLocalizedString("REMOVE")) {
+                    showRemoveSelectedConfirm = true
+                }
             }
         } else {
-            Button(NSLocalizedString("DOWNLOAD")) {
-                let downloadChapters = (viewModel.manga.chapters ?? viewModel.chapters)
-                    .filter { chapter in
-                        let isSelected = selectedChapters.contains(chapter.key)
-                        guard isSelected else { return false }
-                        let isDownloaded = viewModel.downloadStatus[chapter.key] == .finished
-                        let isDownloading = viewModel.downloadStatus[chapter.key] == .downloading
-                        let isQueued = viewModel.downloadStatus[chapter.key] == .queued
-                        guard !isDownloaded, !isDownloading, !isQueued else { return false }
-                        return true
-                    }
-                    .reversed()
-
-                let downloadOnlyOnWifi = AppSettings.downloads.downloadOnlyOnWifi.get()
-                if
-                    downloadOnlyOnWifi && Reachability.getConnectionType() == .wifi
-                        || !downloadOnlyOnWifi
-                {
-                    Task {
-                        await DownloadManager.shared.download(
-                            manga: viewModel.manga,
-                            chapters: Array(downloadChapters)
-                        )
-                    }
-                } else {
-                    showConnectionAlert = true
+            let cannotDownload = viewModel.source == nil || viewModel.manga.isLocal() || selectedChapters.isEmpty
+            HStack(spacing: 16) {
+                Button(NSLocalizedString("DOWNLOAD_AND_UPSCALE")) {
+                    downloadSelectedChapters(upscale: true)
                 }
-                withAnimation {
-                    editMode = .inactive
+                .disabled(cannotDownload || !hasModel)
+                Button(NSLocalizedString("DOWNLOAD")) {
+                    downloadSelectedChapters(upscale: false)
                 }
+                .disabled(cannotDownload)
             }
-            .disabled(viewModel.source == nil || viewModel.manga.isLocal() || selectedChapters.isEmpty)
+        }
+    }
+}
+
+extension MangaView {
+    /// Download chapters, respecting the Wi-Fi only setting.
+    func downloadChapters(_ chapters: [AidokuRunner.Chapter], upscale: Bool) {
+        let downloadOnlyOnWifi = AppSettings.downloads.downloadOnlyOnWifi.get()
+        if
+            downloadOnlyOnWifi && Reachability.getConnectionType() == .wifi
+                || !downloadOnlyOnWifi
+        {
+            let manga = viewModel.manga
+            Task {
+                await DownloadManager.shared.download(
+                    manga: manga,
+                    chapters: chapters,
+                    upscale: upscale
+                )
+            }
+        } else {
+            showConnectionAlert = true
+        }
+    }
+
+    /// Download the chapters that are selected in edit mode.
+    func downloadSelectedChapters(upscale: Bool) {
+        let chapters = (viewModel.manga.chapters ?? viewModel.chapters)
+            .filter { chapter in
+                guard selectedChapters.contains(chapter.key) else { return false }
+                let status = viewModel.downloadStatus[chapter.key]
+                return status != .finished && status != .downloading && status != .queued
+            }
+            .reversed()
+        downloadChapters(Array(chapters), upscale: upscale)
+        withAnimation {
+            editMode = .inactive
         }
     }
 }
@@ -808,6 +860,8 @@ private struct ChapterCellView<T: View>: View, Equatable {
     let downloadProgress: Float?
     let displayMode: ChapterTitleDisplayMode
     let isEditing: Bool
+    let upscaled: Bool
+    let upscaleProgress: Float?
 
     var onPressed: (() -> Void)?
     var contextMenu: (() -> T)?
@@ -826,7 +880,9 @@ private struct ChapterCellView<T: View>: View, Equatable {
                 page: page,
                 downloadStatus: downloadStatus,
                 downloadProgress: downloadProgress,
-                displayMode: displayMode
+                displayMode: displayMode,
+                upscaled: upscaled,
+                upscaleProgress: upscaleProgress
             )
         }
         if isEditing {
@@ -854,6 +910,8 @@ private struct ChapterCellView<T: View>: View, Equatable {
             && lhs.downloadProgress == rhs.downloadProgress
             && lhs.displayMode == rhs.displayMode
             && lhs.isEditing == rhs.isEditing
+            && lhs.upscaled == rhs.upscaled
+            && lhs.upscaleProgress == rhs.upscaleProgress
     }
 }
 

@@ -21,6 +21,8 @@ extension MangaView {
         @Published var readingHistory: [String: (page: Int, date: Int)] = [:]
         @Published var downloadProgress: [String: Float] = [:] // chapterId: progress
         @Published var downloadStatus: [String: DownloadStatus] = [:] // chapterId: status
+        @Published var upscaledChapters: Set<String> = [] // downloaded chapters with upscaled pages
+        @Published var upscaleProgress: [String: Float] = [:] // chapters that are being upscaled
 
         @Published var bookmarked = false
         @Published var hasCategories = false
@@ -303,6 +305,39 @@ extension MangaView.ViewModel {
                 }
                 .store(in: &cancellables)
         }
+
+        NotificationCenter.default.publisher(for: .chapterUpscaleProgressed)
+            .sink { [weak self] output in
+                Task { @MainActor in
+                    guard
+                        let self,
+                        let progress = output.object as? ChapterUpscaleProgress,
+                        progress.chapter.mangaIdentifier == self.manga.identifier
+                    else {
+                        return
+                    }
+                    self.upscaleProgress[progress.chapter.chapterKey] = progress.total > 0
+                        ? Float(progress.done) / Float(progress.total)
+                        : 0
+                }
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .chapterUpscaleFinished)
+            .sink { [weak self] output in
+                Task { @MainActor in
+                    guard
+                        let self,
+                        let chapter = output.object as? ChapterIdentifier,
+                        chapter.mangaIdentifier == self.manga.identifier
+                    else {
+                        return
+                    }
+                    self.upscaleProgress.removeValue(forKey: chapter.chapterKey)
+                    await self.refreshUpscaled(keys: [chapter.chapterKey])
+                }
+            }
+            .store(in: &cancellables)
 
         for name in [
             Notification.Name.downloadsRemoved,
@@ -619,6 +654,53 @@ extension MangaView.ViewModel {
                 for: .init(sourceKey: manga.sourceKey, mangaKey: manga.key, chapterKey: chapter.key)
             )
         }
+        let downloadedKeys = downloadStatus.filter { $0.value == .finished }.map(\.key)
+        await refreshUpscaled(keys: downloadedKeys)
+    }
+
+    /// Re-check which of the given chapters have upscaled pages (reads marker files, so off the main thread).
+    func refreshUpscaled(keys: [String]) async {
+        guard !keys.isEmpty else { return }
+        let sourceKey = manga.sourceKey
+        let mangaKey = manga.key
+        let upscaled = await Task.detached(priority: .utility) {
+            keys.filter {
+                DownloadManager.shared.isChapterUpscaled(
+                    .init(sourceKey: sourceKey, mangaKey: mangaKey, chapterKey: $0)
+                )
+            }
+        }.value
+        upscaledChapters.subtract(keys)
+        upscaledChapters.formUnion(upscaled)
+    }
+
+    /// Upscale chapters that are already downloaded.
+    func upscale(chapterKeys: [String]) {
+        let identifiers = chapterKeys.map {
+            ChapterIdentifier(sourceKey: manga.sourceKey, mangaKey: manga.key, chapterKey: $0)
+        }
+        for key in chapterKeys {
+            upscaleProgress[key] = 0
+        }
+        Task {
+            await DownloadManager.shared.upscale(chapters: identifiers)
+        }
+    }
+
+    func cancelUpscale(chapterKey: String) {
+        upscaleProgress.removeValue(forKey: chapterKey)
+        let identifier = ChapterIdentifier(sourceKey: manga.sourceKey, mangaKey: manga.key, chapterKey: chapterKey)
+        Task {
+            await DownloadManager.shared.cancelUpscale(chapter: identifier)
+        }
+    }
+
+    func redownload(chapter: AidokuRunner.Chapter) {
+        upscaledChapters.remove(chapter.key)
+        let manga = manga
+        Task {
+            await DownloadManager.shared.redownload(manga: manga, chapter: chapter)
+        }
     }
 
     private func loadBookmarked() async {
@@ -749,6 +831,7 @@ extension MangaView.ViewModel {
         if let chapter {
             downloadProgress.removeValue(forKey: chapter.chapterKey)
             downloadStatus[chapter.chapterKey] = DownloadManager.shared.getDownloadStatus(for: chapter)
+            Task { await refreshUpscaled(keys: [chapter.chapterKey]) }
             if let chapterIndex = otherDownloadedChapters.firstIndex(where: { $0.key == chapter.chapterKey }) {
                 withAnimation {
                     _ = otherDownloadedChapters.remove(at: chapterIndex)
@@ -762,6 +845,8 @@ extension MangaView.ViewModel {
             for chapter in chapters {
                 downloadProgress.removeValue(forKey: chapter.chapterKey)
                 downloadStatus[chapter.chapterKey] = DownloadStatus.none
+                upscaledChapters.remove(chapter.chapterKey)
+                upscaleProgress.removeValue(forKey: chapter.chapterKey)
             }
         } else if
             let manga = notification.object as? MangaIdentifier,
@@ -769,6 +854,8 @@ extension MangaView.ViewModel {
         { // all chapters
             downloadProgress = [:]
             downloadStatus = [:]
+            upscaledChapters = []
+            upscaleProgress = [:]
         }
     }
 

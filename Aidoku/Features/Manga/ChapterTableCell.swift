@@ -17,6 +17,10 @@ struct ChapterTableCell: View {
     let downloadStatus: DownloadStatus
     var downloadProgress: Float?
     let displayMode: ChapterTitleDisplayMode
+    /// The downloaded pages were upscaled.
+    var upscaled: Bool = false
+    /// Set while the chapter is being upscaled.
+    var upscaleProgress: Float?
 
     var downloaded: Bool {
         downloadStatus == .finished
@@ -60,7 +64,15 @@ struct ChapterTableCell: View {
                 }
             }
             Spacer(minLength: 0)
-            if downloaded {
+            if downloaded, let upscaleProgress {
+                DownloadProgressView(progress: upscaleProgress)
+                    .frame(width: 13, height: 13)
+            } else if downloaded {
+                if upscaled {
+                    Image(systemName: "sparkles")
+                        .imageScale(.small)
+                        .foregroundStyle(.tertiary)
+                }
                 Image(systemName: "arrow.down.circle.fill")
                     .imageScale(.small)
                     .foregroundStyle(.tertiary)

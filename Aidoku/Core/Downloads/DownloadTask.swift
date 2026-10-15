@@ -504,7 +504,7 @@ extension DownloadTask {
         } else {
             do {
                 // upscale the pages once now, so the reader doesn't have to do it live
-                if AppSettings.downloads.bake.get() {
+                if download.upscale == true {
                     await bakePages(of: download, in: tmpDirectory)
                 }
 
