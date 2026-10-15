@@ -60,6 +60,7 @@
 "VIEW_SERIES" = "View Series";
 "VIEW_FILES" = "View Files";
 "COMPRESS_DOWNLOADS" = "Compress Downloads";
+"UPSCALE_DOWNLOADS" = "Upscale Downloads Once";
 "PARALLEL_DOWNLOADS" = "Parallel Downloads";
 "BACKGROUND_DOWNLOADING" = "Background Downloading";
 "METADATA_DETECTED" = "Legacy Metadata Detected";

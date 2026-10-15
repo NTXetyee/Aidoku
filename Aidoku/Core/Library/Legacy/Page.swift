@@ -31,6 +31,9 @@ struct Page: Hashable {
     var hasDescription: Bool = false
     var description: String?
 
+    /// Set for downloaded pages that were already upscaled when downloaded.
+    var skipUpscale: Bool = false
+
     var key: String {
         "\(chapterId)|\(index)"
     }

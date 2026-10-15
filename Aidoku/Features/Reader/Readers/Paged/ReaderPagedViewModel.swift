@@ -65,9 +65,26 @@ class ReaderPagedViewModel {
         let language = chapter.language ?? source?.languages.first
         let isDownloaded = DownloadManager.shared.isChapterDownloaded(chapter: identifier)
         if isDownloaded {
+            // pages upscaled at download time shouldn't be upscaled again
+            let chapterDirectory = DownloadManager.directory
+                .appendingSafePathComponent(identifier.sourceKey)
+                .appendingSafePathComponent(identifier.mangaKey)
+                .appendingSafePathComponent(identifier.chapterKey)
+            let archiveUrl = chapterDirectory.appendingPathExtension("cbz")
+            let bakedPages = ChapterBaker.bakedPages(
+                forChapterAt: archiveUrl.exists ? archiveUrl : chapterDirectory
+            )
             return await DownloadManager.shared.getDownloadedPages(for: identifier)
                 .map {
-                    $0.toOld(sourceId: sourceId, chapterId: chapter.key, language: language)
+                    var page = $0.toOld(sourceId: sourceId, chapterId: chapter.key, language: language)
+                    if
+                        !bakedPages.isEmpty,
+                        let name = page.imageURL?.split(separator: "/").last.map(String.init),
+                        bakedPages.contains(name.removingPercentEncoding ?? name)
+                    {
+                        page.skipUpscale = true
+                    }
+                    return page
                 }
         } else {
             guard var sourcePages = try? await source?.getPageList(

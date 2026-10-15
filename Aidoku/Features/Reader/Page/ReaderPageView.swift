@@ -160,9 +160,9 @@ extension ReaderPageView {
             setPageImage(image)
             return true
         } else if let zipURL = page.zipURL, let url = URL(string: zipURL), let filePath = page.imageURL {
-            return await setPageImage(zipURL: url, filePath: filePath)
+            return await setPageImage(zipURL: url, filePath: filePath, skipUpscale: page.skipUpscale)
         } else if let urlString = page.imageURL, let url = URL(string: urlString) {
-            return await setPageImage(url: url, context: page.context, sourceId: self.sourceId)
+            return await setPageImage(url: url, context: page.context, sourceId: self.sourceId, skipUpscale: page.skipUpscale)
         } else if let base64 = page.base64 {
             return await setPageImage(base64: base64, key: page.hashValue)
         } else if let text = page.text {
@@ -174,16 +174,26 @@ extension ReaderPageView {
     }
 
     /// Creates the image request used to fetch a page image.
-    static func imageRequest(url: URL, context: PageContext? = nil, sourceKey: String? = nil) async -> ImageRequest {
+    static func imageRequest(
+        url: URL,
+        context: PageContext? = nil,
+        sourceKey: String? = nil,
+        skipUpscale: Bool = false
+    ) async -> ImageRequest {
         let source: AidokuRunner.Source? = if let sourceKey {
             await SourceManager.shared.source(for: sourceKey)
         } else {
             nil
         }
-        return await imageRequest(url: url, context: context, source: source)
+        return await imageRequest(url: url, context: context, source: source, skipUpscale: skipUpscale)
     }
 
-    static func imageRequest(url: URL, context: PageContext? = nil, source: AidokuRunner.Source?) async -> ImageRequest {
+    static func imageRequest(
+        url: URL,
+        context: PageContext? = nil,
+        source: AidokuRunner.Source?,
+        skipUpscale: Bool = false
+    ) async -> ImageRequest {
         let urlRequest = if !url.isFileURL, let source {
             await source.getModifiedImageRequest(url: url, context: context)
         } else {
@@ -206,7 +216,7 @@ extension ReaderPageView {
         }
         if UserDefaults.standard.bool(forKey: "Reader.downsampleImages") {
             processors.append(DownsampleProcessor(width: UIScreen.main.bounds.width))
-        } else if UserDefaults.standard.bool(forKey: "Reader.upscaleImages") {
+        } else if !skipUpscale, UserDefaults.standard.bool(forKey: "Reader.upscaleImages") {
             processors.append(UpscaleProcessor())
         }
 
@@ -217,7 +227,12 @@ extension ReaderPageView {
         )
     }
 
-    func setPageImage(url: URL, context: PageContext? = nil, sourceId: String? = nil) async -> Bool {
+    func setPageImage(
+        url: URL,
+        context: PageContext? = nil,
+        sourceId: String? = nil,
+        skipUpscale: Bool = false
+    ) async -> Bool {
         // remove text view if it exists
         if let textView {
             textView.view.removeFromSuperview()
@@ -249,7 +264,7 @@ extension ReaderPageView {
                     request = imageTask.request
             }
         } else {
-            request = await Self.imageRequest(url: url, context: context, sourceKey: sourceId)
+            request = await Self.imageRequest(url: url, context: context, sourceKey: sourceId, skipUpscale: skipUpscale)
         }
 
         // Store current image request for reload functionality
@@ -371,7 +386,7 @@ extension ReaderPageView {
         return true
     }
 
-    func setPageImage(zipURL: URL, filePath: String) async -> Bool {
+    func setPageImage(zipURL: URL, filePath: String, skipUpscale: Bool = false) async -> Bool {
         guard let extractedURL = await temporaryPageStore.storeArchiveEntry(
             from: zipURL,
             path: filePath
@@ -397,7 +412,7 @@ extension ReaderPageView {
             self.textView = nil
         }
 
-        return await setPageImage(url: extractedURL)
+        return await setPageImage(url: extractedURL, skipUpscale: skipUpscale)
     }
 
     // match image constraints with image size

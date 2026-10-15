@@ -929,6 +929,11 @@ extension Settings {
                 value: .toggle(.init())
             ),
             .init(
+                key: AppSettings.downloads.bake.key,
+                title: NSLocalizedString("UPSCALE_DOWNLOADS"),
+                value: .toggle(.init())
+            ),
+            .init(
                 key: AppSettings.downloads.parallel.key,
                 title: NSLocalizedString("PARALLEL_DOWNLOADS"),
                 value: .toggle(.init())

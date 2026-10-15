@@ -503,6 +503,11 @@ extension DownloadTask {
             }
         } else {
             do {
+                // upscale the pages once now, so the reader doesn't have to do it live
+                if AppSettings.downloads.bake.get() {
+                    await bakePages(of: download, in: tmpDirectory)
+                }
+
                 // Save chapter metadata after successful download
                 await DownloadManager.shared.saveChapterMetadata(manga: download.manga, chapter: download.chapter, to: tmpDirectory)
 
@@ -511,7 +516,17 @@ extension DownloadTask {
                 try FileManager.default.moveItem(at: tmpDirectory, to: directory)
 
                 if AppSettings.downloads.compress.get() {
-                    try FileManager.default.zipItem(at: directory, to: directory.appendingPathExtension("cbz"), shouldKeepParent: false)
+                    let archiveUrl = directory.appendingPathExtension("cbz")
+                    try FileManager.default.zipItem(at: directory, to: archiveUrl, shouldKeepParent: false)
+                    // make sure the bake marker made it into the archive
+                    let markerUrl = directory.appendingPathComponent(ChapterBaker.markerName)
+                    if
+                        markerUrl.exists,
+                        ChapterBaker.bakedPages(forChapterAt: archiveUrl).isEmpty,
+                        let archive = try? Archive(url: archiveUrl, accessMode: .update)
+                    {
+                        try? archive.addEntry(with: ChapterBaker.markerName, relativeTo: directory)
+                    }
                     directory.removeItem()
                 }
 
@@ -545,6 +560,19 @@ extension DownloadTask {
         failedPages = 0
         failedPageNumbers = []
         await next()
+    }
+
+    // upscale downloaded pages, reporting progress through the download's progress bar
+    private func bakePages(of download: Download, in directory: URL) async {
+        let delegate = self.delegate
+        await ChapterBaker.shared.bake(directory: directory) { done, total in
+            var update = download
+            update.progress = done
+            update.total = total
+            Task {
+                await delegate?.downloadProgressChanged(download: update)
+            }
+        }
     }
 
     // store file with failed pages in failed download directory

@@ -344,7 +344,7 @@ extension ReaderWebtoonPageNode {
 
         let width = pageWidth
         let shouldDownsample = UserDefaults.standard.bool(forKey: "Reader.downsampleImages") && width > 0
-        let shouldUpscale = UserDefaults.standard.bool(forKey: "Reader.upscaleImages")
+        let shouldUpscale = !page.skipUpscale && UserDefaults.standard.bool(forKey: "Reader.upscaleImages")
         let shouldCropBorders = UserDefaults.standard.bool(forKey: "Reader.cropBorders")
         var processors: [ImageProcessing] = []
         var usePageProcessor = false
