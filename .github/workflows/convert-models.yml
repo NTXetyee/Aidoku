@@ -1,0 +1,27 @@
+name: Convert upscale models
+
+on: workflow_dispatch
+
+jobs:
+  convert:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r tools/upscale-models/requirements.txt
+      - name: Convert models
+        working-directory: tools/upscale-models
+        run: python convert.py --out build/models
+      - name: Validate models
+        working-directory: tools/upscale-models
+        run: python validate.py --models build/models
+      - name: Upload models
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upscale-models
+          path: tools/upscale-models/build/models
+          if-no-files-found: warn
