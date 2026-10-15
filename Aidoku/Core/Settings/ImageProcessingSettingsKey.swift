@@ -14,6 +14,7 @@ enum ImageProcessingSettingsKey {
         let upscale = UserDefaults.standard.bool(forKey: "Reader.upscaleImages")
         let maxHeight = UserDefaults.standard.integer(forKey: "Reader.upscaleMaxHeight")
         let quality = AppSettings.reader.upscaleQuality.get().rawValue
-        return "\(crop)-\(downsample)-\(upscale)-\(maxHeight)-\(quality)"
+        let model = ModelManager.shared.getEnabledModelFileName() ?? ""
+        return "\(crop)-\(downsample)-\(upscale)-\(maxHeight)-\(quality)-\(model)"
     }
 }

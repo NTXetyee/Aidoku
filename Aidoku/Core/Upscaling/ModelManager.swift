@@ -48,6 +48,7 @@ actor ModelManager {
 
     private var imageModelCache: [String: ImageProcessingModel] = [:]
     private var cachedModelList: ModelList?
+    private var didSeedBundledModels = false
 
     // download a model from the server and save to local disk
     func downloadModel(_ model: ModelInfo) async throws {
@@ -103,11 +104,20 @@ actor ModelManager {
         }
         // remove from cache
         imageModelCache[fileName] = nil
+
+        // don't bring a bundled model back on the next launch
+        if BundledModels.all.contains(where: { $0.file == fileName }) {
+            var removed = Set(UserDefaults.standard.stringArray(forKey: Self.removedBundledModelsKey) ?? [])
+            removed.insert(fileName)
+            UserDefaults.standard.set(Array(removed), forKey: Self.removedBundledModelsKey)
+        }
     }
 
     // get installed models from disk
     // fetches extra info from the server if available
     func getInstalledModels() async -> [ModelInfo] {
+        seedBundledModelsIfNeeded()
+
         guard
             let modelsDir = try? modelsDirectory(),
             let files = try? FileManager.default.contentsOfDirectory(atPath: modelsDir.path)
@@ -116,7 +126,10 @@ actor ModelManager {
         }
 
         return files.compactMap { file in
-            guard file.hasSuffix(".mlpackage") || file.hasSuffix(".mlmodel") else { return nil }  // only show models
+            // only show models
+            guard file.hasSuffix(".mlpackage") || file.hasSuffix(".mlmodel") || file.hasSuffix(".mlmodelc") else {
+                return nil
+            }
 
             let filePath = (modelsDir.path as NSString).appendingPathComponent(file)
 
@@ -213,7 +226,57 @@ actor ModelManager {
         guard let fileName = getEnabledModelFileName() else {
             return nil
         }
+        seedBundledModelsIfNeeded()
         return try loadModel(info: .init(file: fileName))
+    }
+}
+
+// MARK: - Bundled models
+extension ModelManager {
+    fileprivate static let removedBundledModelsKey = "Data.removedBundledModels"
+
+    // copy models shipped inside the app into the models directory (once per launch)
+    // so they show up in the model list like downloaded ones
+    fileprivate func seedBundledModelsIfNeeded() {
+        guard !didSeedBundledModels else { return }
+        didSeedBundledModels = true
+
+        guard let modelsDir = try? modelsDirectory() else { return }
+        let fm = FileManager.default
+        let removed = Set(UserDefaults.standard.stringArray(forKey: Self.removedBundledModelsKey) ?? [])
+
+        for info in BundledModels.all where !removed.contains(info.file) {
+            let base = (info.file as NSString).deletingPathExtension
+            guard let bundled = Bundle.main.url(forResource: base, withExtension: "mlmodelc") else { continue }
+
+            let destination = modelsDir.appendingPathComponent(info.file)
+            let metadataURL = modelsDir.appendingPathComponent(info.file + ".json")
+
+            // skip if the installed copy is already up to date
+            if
+                fm.fileExists(atPath: destination.path),
+                let data = try? Data(contentsOf: metadataURL),
+                let installed = try? JSONDecoder().decode(ModelInfo.self, from: data),
+                installed.version >= info.version
+            {
+                continue
+            }
+
+            let temporary = destination.appendingPathExtension("seeding")
+            do {
+                try? fm.removeItem(at: temporary)
+                try fm.copyItem(at: bundled, to: temporary)
+                if fm.fileExists(atPath: destination.path) {
+                    try fm.removeItem(at: destination)
+                }
+                try fm.moveItem(at: temporary, to: destination)
+                try JSONEncoder().encode(info).write(to: metadataURL, options: .atomic)
+                imageModelCache[info.file] = nil
+            } catch {
+                try? fm.removeItem(at: temporary)
+                LogManager.logger.error("Failed to install bundled model \(info.file): \(error)")
+            }
+        }
     }
 }
 
@@ -272,7 +335,8 @@ extension ModelManager {
         guard let modelType = info.type else { return nil }
 
         // load coreml model
-        let compiledUrl = try MLModel.compileModel(at: fileURL)
+        // bundled models are already compiled
+        let compiledUrl = fileURL.pathExtension == "mlmodelc" ? fileURL : try MLModel.compileModel(at: fileURL)
         let mlModel = try MLModel(contentsOf: compiledUrl)
         let model: ImageProcessingModel?
 

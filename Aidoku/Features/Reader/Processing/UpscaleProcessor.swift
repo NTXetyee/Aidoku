@@ -11,7 +11,7 @@ import Vision
 
 struct UpscaleProcessor: ImageProcessing {
     var identifier: String {
-        "com.github.Aidoku/Aidoku/upscale"
+        "com.github.Aidoku/Aidoku/upscale-\(ModelManager.shared.getEnabledModelFileName() ?? "")"
     }
 
     func process(_ image: PlatformImage) -> PlatformImage? {
