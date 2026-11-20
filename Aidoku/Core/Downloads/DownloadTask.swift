@@ -36,9 +36,16 @@ actor DownloadTask: Identifiable {
 
     private(set) var running: Bool = false
 
+    /// Identifies the chapter download that is currently in progress, so a pause followed by a
+    /// resume doesn't start a second download of the same chapter alongside the first.
+    private var activeChapterDownload: UUID?
+
     private static let maxConcurrentPageTasks = 5
 
     private static let maxPageRetries = 3
+    /// Network errors (no HTTP response) are retried a bit more, they're usually transient.
+    private static let maxNetworkRetries = 5
+    private static let maxPageListRetries = 3
     private static let retryBaseDelay: TimeInterval = 1
     private static let maxRetryDelay: TimeInterval = 60
 
@@ -191,13 +198,57 @@ extension DownloadTask {
                 return await next()
             }
 
+            // a chapter is already being downloaded, it calls back into this once it's done
+            guard activeChapterDownload == nil else { return }
+            let token = UUID()
+            activeChapterDownload = token
             Task {
                 await self.download(from: source)
+                await self.finishChapterDownload(token)
             }
         } else {
             // source not found, skip this download
             downloads.removeFirst()
             await next()
+        }
+    }
+
+    /// Called when a chapter download returns, in case it stopped early without moving on.
+    private func finishChapterDownload(_ token: UUID) async {
+        guard activeChapterDownload == token else { return }
+        activeChapterDownload = nil
+        await next()
+    }
+
+    /// Fetch the chapter's page list, retrying if it comes back empty.
+    private func fetchPageList(source: AidokuRunner.Source, download: Download) async -> [AidokuRunner.Page] {
+        var attempt = 0
+        while true {
+            // don't make requests that would be cut off by the app being suspended
+            await DownloadBackgroundExecution.shared.waitUntilRunnable()
+            guard downloads.first == download else { return [] }
+
+            let wasRunnable = DownloadBackgroundExecution.shared.canRunIndefinitely
+            let pages = (try? await source.getPageList(manga: download.manga, chapter: download.chapter)) ?? []
+            if !pages.isEmpty {
+                return pages
+            }
+
+            // the app may have been suspended during the request, try again without counting it
+            if !wasRunnable || !DownloadBackgroundExecution.shared.canRunIndefinitely {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                continue
+            }
+            guard attempt < Self.maxPageListRetries else {
+                LogManager.logger.error("Failed to load pages for chapter: \(download.chapter.formattedTitle())")
+                return []
+            }
+            do {
+                try await Task.sleep(nanoseconds: UInt64(Self.backoffDelay(forAttempt: attempt) * 1_000_000_000))
+            } catch {
+                return []
+            }
+            attempt += 1
         }
     }
 
@@ -232,10 +283,7 @@ extension DownloadTask {
 
         if pages.isEmpty {
             let language = download.chapter.language ?? source.languages.first
-            pages = ((try? await source.getPageList(
-                manga: download.manga,
-                chapter: download.chapter
-            )) ?? []).map {
+            pages = (await fetchPageList(source: source, download: download)).map {
                 $0.toOld(
                     sourceId: source.key,
                     chapterId: download.chapterIdentifier.chapterKey,
@@ -412,6 +460,11 @@ extension DownloadTask {
     private func fetchPageData(for urlRequest: URLRequest, tmpDirectory: URL) async -> (Data, URLResponse)? {
         var attempt = 0
         while true {
+            // wait for the app to be opened again rather than starting a request that will get cut off
+            await DownloadBackgroundExecution.shared.waitUntilRunnable()
+            guard tmpDirectory.exists else { return nil }
+
+            let wasRunnable = DownloadBackgroundExecution.shared.canRunIndefinitely
             let result = try? await URLSession.shared.data(for: urlRequest)
 
             // response was okay, bail out
@@ -427,9 +480,22 @@ extension DownloadTask {
                 case nil: "network error"
             }
 
-            let isRetryable = statusCode.map(self.isRetryableStatus) ?? true
+            // the app was suspended while the request was in flight, which isn't the server's fault:
+            // wait until it can run again and retry without using up an attempt
+            if statusCode == nil && (!wasRunnable || !DownloadBackgroundExecution.shared.canRunIndefinitely) {
+                LogManager.logger.warn("Image download interrupted while in the background, retrying: \(urlRequest)")
+                do {
+                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                } catch {
+                    return nil
+                }
+                continue
+            }
 
-            guard isRetryable, attempt < Self.maxPageRetries else {
+            let isRetryable = statusCode.map(self.isRetryableStatus) ?? true
+            let maxRetries = statusCode == nil ? Self.maxNetworkRetries : Self.maxPageRetries
+
+            guard isRetryable, attempt < maxRetries else {
                 LogManager.logger.error("Failed to download image (\(reason)): \(urlRequest)")
                 return nil
             }
@@ -559,6 +625,7 @@ extension DownloadTask {
         currentPage = 0
         failedPages = 0
         failedPageNumbers = []
+        activeChapterDownload = nil
         await next()
     }
 
@@ -567,6 +634,7 @@ extension DownloadTask {
         let delegate = self.delegate
         await ChapterBaker.shared.bake(directory: directory) { done, total in
             var update = download
+            update.baking = true
             update.progress = done
             update.total = total
             Task {

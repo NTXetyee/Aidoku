@@ -85,7 +85,7 @@ actor ModelManager {
             try data.write(to: fileURL, options: .atomic)
         }
 
-        imageModelCache[fileName] = nil
+        imageModelCache = imageModelCache.filter { $0.key != fileName && !$0.key.hasPrefix(fileName + "#") }
 
         let metadataURL = try metadataURL(forModelFile: fileName)
         try metadataData.write(to: metadataURL, options: .atomic)
@@ -103,7 +103,7 @@ actor ModelManager {
             try? FileManager.default.removeItem(at: metadataURL)
         }
         // remove from cache
-        imageModelCache[fileName] = nil
+        imageModelCache = imageModelCache.filter { $0.key != fileName && !$0.key.hasPrefix(fileName + "#") }
 
         // don't bring a bundled model back on the next launch
         if BundledModels.all.contains(where: { $0.file == fileName }) {
@@ -229,6 +229,17 @@ actor ModelManager {
         seedBundledModelsIfNeeded()
         return try loadModel(info: .init(file: fileName))
     }
+
+    /// An instance of the enabled model that can run while the app is in the background.
+    ///
+    /// iOS doesn't allow GPU work from the background, so this one only uses the CPU and Neural Engine.
+    func getEnabledBackgroundModel() throws -> ImageProcessingModel? {
+        guard let fileName = getEnabledModelFileName() else {
+            return nil
+        }
+        seedBundledModelsIfNeeded()
+        return try loadModel(info: .init(file: fileName), computeUnits: .cpuAndNeuralEngine)
+    }
 }
 
 // MARK: - Bundled models
@@ -310,13 +321,14 @@ extension ModelManager {
     }
 
     // load a usable instance of an image model from the disk
-    private func loadModel(info: ModelInfo) throws -> ImageProcessingModel? {
+    private func loadModel(info: ModelInfo, computeUnits: MLComputeUnits? = nil) throws -> ImageProcessingModel? {
         let modelsDir = try modelsDirectory()
         let fileName = (info.file as NSString).lastPathComponent
         let fileURL = modelsDir.appendingPathComponent(fileName)
+        let cacheKey = computeUnits.map { "\(fileName)#\($0.rawValue)" } ?? fileName
 
         // return cached model if available
-        if let cached = imageModelCache[fileName] {
+        if let cached = imageModelCache[cacheKey] {
             return cached
         }
 
@@ -337,7 +349,14 @@ extension ModelManager {
         // load coreml model
         // bundled models are already compiled
         let compiledUrl = fileURL.pathExtension == "mlmodelc" ? fileURL : try MLModel.compileModel(at: fileURL)
-        let mlModel = try MLModel(contentsOf: compiledUrl)
+        let mlModel: MLModel
+        if let computeUnits {
+            let configuration = MLModelConfiguration()
+            configuration.computeUnits = computeUnits
+            mlModel = try MLModel(contentsOf: compiledUrl, configuration: configuration)
+        } else {
+            mlModel = try MLModel(contentsOf: compiledUrl)
+        }
         let model: ImageProcessingModel?
 
         let config = info.config?.compactMapValues { $0.toRaw() } ?? [:]
@@ -351,7 +370,7 @@ extension ModelManager {
                 model = nil
         }
         if let model {
-            imageModelCache[fileName] = model
+            imageModelCache[cacheKey] = model
         }
         return model
     }

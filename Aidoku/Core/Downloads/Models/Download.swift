@@ -34,6 +34,9 @@ struct Download: Equatable, Sendable, Codable {
     /// Optional so queues saved by older builds still decode.
     var upscale: Bool?
 
+    /// Whether the downloaded pages are currently being upscaled.
+    var baking: Bool?
+
     static func == (lhs: Download, rhs: Download) -> Bool {
         lhs.chapterIdentifier == rhs.chapterIdentifier
     }

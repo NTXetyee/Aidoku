@@ -42,6 +42,8 @@ actor ChapterBaker {
         guard let model = try? await ModelManager.shared.getEnabledModel() else {
             return 0
         }
+        // loaded on demand if the app ends up in the background
+        var backgroundModel: ImageProcessingModel?
         let modelName = ModelManager.shared.getEnabledModelFileName()
         let maxHeight = UserDefaults.standard.integer(forKey: "Reader.upscaleMaxHeight")
 
@@ -62,7 +64,23 @@ actor ChapterBaker {
             if Task.isCancelled { break }
             await waitForCoolDown()
 
-            if let name = await bakePage(file: file, model: model, maxHeight: maxHeight) {
+            // the gpu can't be used from the background, so use a cpu/neural engine model there
+            let wasForeground = DownloadBackgroundExecution.shared.isForeground
+            if !wasForeground, backgroundModel == nil {
+                backgroundModel = try? await ModelManager.shared.getEnabledBackgroundModel()
+            }
+            var name = await bakePage(file: file, model: wasForeground ? model : backgroundModel ?? model, maxHeight: maxHeight)
+
+            // the app went to the background mid-page (or came back), try once more with the right model
+            if name == nil, DownloadBackgroundExecution.shared.isForeground != wasForeground {
+                if wasForeground, backgroundModel == nil {
+                    backgroundModel = try? await ModelManager.shared.getEnabledBackgroundModel()
+                }
+                let retryModel = wasForeground ? backgroundModel ?? model : model
+                name = await bakePage(file: file, model: retryModel, maxHeight: maxHeight)
+            }
+
+            if let name {
                 baked.append(name)
             }
             progress(index + 1, files.count)
