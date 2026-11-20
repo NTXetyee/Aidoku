@@ -137,7 +137,7 @@ struct DictionaryVocabListView: View {
         }
     }
 
-    @ContentBuilder
+    @ViewBuilder
     func contextMenu(for entry: VocabEntry) -> some View {
         Button(role: .destructive) {
             Task {
@@ -195,7 +195,7 @@ struct DictionaryVocabListView: View {
 
 private struct VocabItemView<MenuContent: View>: View {
     let item: VocabEntry
-    @ContentBuilder var menuContent: MenuContent
+    @ViewBuilder var menuContent: MenuContent
 
     @Environment(\.colorScheme) var colorScheme
 

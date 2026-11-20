@@ -30,7 +30,7 @@ extension EnvironmentValues {
 
 extension View {
     func settingPageContent<Content: View>(
-        @ContentBuilder _ content: @escaping (String) -> Content?
+        @ViewBuilder _ content: @escaping (String) -> Content?
     ) -> some View {
         environment(\.settingPageContent) { key in
             if let view = content(key) {
@@ -42,7 +42,7 @@ extension View {
     }
 
     func settingCustomContent<Content: View>(
-        @ContentBuilder _ content: @escaping (Setting) -> Content
+        @ViewBuilder _ content: @escaping (Setting) -> Content
     ) -> some View {
         environment(\.settingCustomContent) { setting in
             AnyView(content(setting))

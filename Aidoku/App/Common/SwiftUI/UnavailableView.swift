@@ -43,7 +43,7 @@ struct UnavailableView: View {
         }
     }
 
-    @ContentBuilder
+    @ViewBuilder
     static func search(text: String) -> some View {
         if #available(iOS 17.0, *) {
             ContentUnavailableView.search(text: text)

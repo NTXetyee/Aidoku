@@ -56,7 +56,7 @@ struct ErrorView: View {
         }
     }
 
-    @ContentBuilder
+    @ViewBuilder
     func retryButton(title: String = NSLocalizedString("RETRY"), action: @escaping () async -> Void) -> some View {
         HStack {
             if loading {

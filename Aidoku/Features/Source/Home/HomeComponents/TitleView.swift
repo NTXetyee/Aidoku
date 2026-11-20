@@ -37,7 +37,7 @@ struct TitleView: View {
         }
     }
 
-    @ContentBuilder
+    @ViewBuilder
     var titleView: some View {
         if let subtitle {
             VStack(alignment: .leading) {

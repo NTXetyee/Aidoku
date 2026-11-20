@@ -60,7 +60,7 @@ struct MigrateSelectSeriesView: View {
         }
     }
 
-    @ContentBuilder
+    @ToolbarContentBuilder
     var commonToolbarContent: some ToolbarContent {
         ToolbarItem(placement: .confirmationAction) {
             let selectedSeries = series.filter { selectedKeys.contains($0.key) }
@@ -74,7 +74,7 @@ struct MigrateSelectSeriesView: View {
         }
     }
 
-    @ContentBuilder
+    @ViewBuilder
     var selectAllButton: some View {
         let allSelected = selectedKeys.count == series.count
         if allSelected {
@@ -89,7 +89,7 @@ struct MigrateSelectSeriesView: View {
     }
 
     @available(iOS 26.0, *)
-    @ContentBuilder
+    @ToolbarContentBuilder
     var toolbarContentiOS26: some ToolbarContent {
         commonToolbarContent
 
@@ -100,7 +100,7 @@ struct MigrateSelectSeriesView: View {
         }
     }
 
-    @ContentBuilder
+    @ToolbarContentBuilder
     var toolbarContentiOS18: some ToolbarContent {
         commonToolbarContent
 

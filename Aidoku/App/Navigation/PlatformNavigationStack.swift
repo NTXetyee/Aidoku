@@ -9,7 +9,7 @@ import SwiftUI
 
 // uses navigationstack for newer ios, and uses a custom path for macos (in order to have animations)
 struct PlatformNavigationStack<Content: View>: View {
-    @ContentBuilder let content: Content
+    @ViewBuilder let content: Content
 
     var body: some View {
         if #available(iOS 16.0, macOS 13.0, *) {

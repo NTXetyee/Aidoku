@@ -217,7 +217,7 @@ struct HistoryView: View {
         .offsetListSeparator()
     }
 
-    @ContentBuilder
+    @ViewBuilder
     var loadMoreView: some View {
         VStack {
             if viewModel.loadingState != .complete {

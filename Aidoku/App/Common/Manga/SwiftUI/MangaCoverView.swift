@@ -42,7 +42,7 @@ struct MangaCoverView: View {
         )
     }
 
-    @ContentBuilder
+    @ViewBuilder
     var bookmarkView: some View {
         if bookmarked {
             Image("bookmark")

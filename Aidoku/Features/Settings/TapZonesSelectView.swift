@@ -66,7 +66,7 @@ struct TapZonesSelectView: View {
     }
 
     // swiftui view for tap zone regions
-    @ContentBuilder
+    @ViewBuilder
     func layoutView(tapZone: TapZone) -> some View {
         GeometryReader { geometry in
             ZStack {
@@ -92,7 +92,7 @@ struct TapZonesSelectView: View {
 private struct TapZoneCard<Content: View>: View {
     let title: String
     let selected: Bool
-    @ContentBuilder let content: Content
+    @ViewBuilder let content: Content
 
     @Environment(\.colorScheme) private var colorScheme
 

@@ -77,7 +77,7 @@ struct MarkdownView: View {
 
 // loads file urls directly from disk, since the default provider only handles network urls.
 private struct LocalFileImageProvider: ImageProvider {
-    @ContentBuilder
+    @ViewBuilder
     func makeImage(url: URL?) -> some View {
         if let url, url.isFileURL, let image = UIImage(contentsOfFile: url.path) {
             Image(uiImage: image)

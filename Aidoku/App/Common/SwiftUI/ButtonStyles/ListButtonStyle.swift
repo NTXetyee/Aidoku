@@ -10,7 +10,7 @@ import SwiftUI
 struct ListButtonStyle: ButtonStyle {
     var tint: Bool = true
 
-    @ContentBuilder
+    @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
         let label = configuration.label
             .padding(.vertical, 12)

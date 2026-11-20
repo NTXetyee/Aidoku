@@ -65,7 +65,7 @@ struct SettingHeaderView: View {
         }
     }
 
-    @ContentBuilder
+    @ViewBuilder
     static func iconView(source: AidokuRunner.Source?, icon: Icon, size: CGFloat) -> some View {
         switch icon {
             case let .system(name, color, inset):
