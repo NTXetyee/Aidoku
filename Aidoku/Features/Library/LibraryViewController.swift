@@ -1531,7 +1531,7 @@ extension LibraryViewController {
 
             let hasUpscaleModel = ModelManager.shared.getEnabledModelFileName() != nil
 
-            func downloadAction(title: String, unreadOnly: Bool, upscale: Bool) -> UIAction {
+            func downloadAction(title: String, unreadOnly: Bool, limit: Int? = nil, upscale: Bool) -> UIAction {
                 UIAction(
                     title: title,
                     image: upscale ? UIImage(systemName: "wand.and.stars") : nil,
@@ -1543,7 +1543,7 @@ extension LibraryViewController {
                             for info in mangaInfo {
                                 let manga = info.toManga().toNew()
                                 if unreadOnly {
-                                    await DownloadManager.shared.downloadUnread(manga: manga, upscale: upscale)
+                                    await DownloadManager.shared.downloadUnread(manga: manga, limit: limit, upscale: upscale)
                                 } else {
                                     await DownloadManager.shared.downloadAll(manga: manga, upscale: upscale)
                                 }
@@ -1558,8 +1558,18 @@ extension LibraryViewController {
                 }
             }
 
+            func downloadUnreadAction(limit: Int? = nil) -> UIAction {
+                let title = if limit == 1 {
+                    NSLocalizedString("NEXT_UNREAD")
+                } else {
+                    limit.map {
+                        String(format: NSLocalizedString("NEXT_%i_UNREAD"), $0)
+                    } ?? NSLocalizedString("UNREAD")
+                }
+                return downloadAction(title: title, unreadOnly: true, limit: limit, upscale: false)
+            }
+
             let downloadAllAction = downloadAction(title: NSLocalizedString("ALL"), unreadOnly: false, upscale: false)
-            let downloadUnreadAction = downloadAction(title: NSLocalizedString("UNREAD"), unreadOnly: true, upscale: false)
             let downloadAllUpscaleAction = downloadAction(
                 title: NSLocalizedString("DOWNLOAD_ALL_UPSCALE"),
                 unreadOnly: false,
@@ -1579,8 +1589,11 @@ extension LibraryViewController {
                     title: NSLocalizedString("DOWNLOAD"),
                     image: UIImage(systemName: "arrow.down.circle"),
                     children: [
+                        downloadUnreadAction(limit: 1),
+                        downloadUnreadAction(limit: 5),
+                        downloadUnreadAction(limit: 10),
+                        downloadUnreadAction(),
                         downloadAllAction,
-                        downloadUnreadAction,
                         downloadAllUpscaleAction,
                         downloadUnreadUpscaleAction
                     ]
