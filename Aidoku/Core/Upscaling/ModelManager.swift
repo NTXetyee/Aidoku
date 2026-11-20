@@ -238,7 +238,12 @@ actor ModelManager {
             return nil
         }
         seedBundledModelsIfNeeded()
-        return try loadModel(info: .init(file: fileName), computeUnits: .cpuAndNeuralEngine)
+        let computeUnits: MLComputeUnits = if #available(iOS 16.0, *) {
+            .cpuAndNeuralEngine
+        } else {
+            .cpuOnly
+        }
+        return try loadModel(info: .init(file: fileName), computeUnits: computeUnits)
     }
 }
 
